@@ -8,14 +8,17 @@ Aplikasi Android untuk mesin POS C9 dengan dua layar yang menampilkan URL aplika
 - **Konfigurasi Dinamis**: URL dapat dikonfigurasi melalui aplikasi tanpa perlu rebuild
 - **Local IP Support**: Mendukung akses ke server lokal (HTTP)
 - **Hide Keyboard Option**: Opsi untuk menyembunyikan native keyboard Android
+- **Bluetooth Support**: Mendukung printer Bluetooth untuk printing
 
 ## Spesifikasi
 
 ### Layar Utama (Primary Display)
 - Menampilkan aplikasi POS (URL dikonfigurasi)
+- Default: `http://192.168.5.21/esb-fnb-pos/en/login`
 
 ### Layar Kedua (Secondary Display)  
 - Menampilkan Customer Display (URL dikonfigurasi)
+- Default: `http://192.168.5.21/esb-fnb-pos/en/customer-display`
 
 ## Cara Penggunaan
 
@@ -25,6 +28,12 @@ Aplikasi Android untuk mesin POS C9 dengan dua layar yang menampilkan URL aplika
 3. Masukkan URL untuk Customer Display (layar kedua)
 4. Centang "Sembunyikan Native Keyboard" jika ingin menyembunyikan keyboard
 5. Klik "Simpan & Mulai"
+6. Izinkan permissions Bluetooth jika diminta
+
+### Print via Bluetooth
+- Aplikasi sudah memiliki permissions Bluetooth yang diperlukan
+- Printer Bluetooth dapat terhubung melalui sistem Android
+- Pastikan Bluetooth printer sudah paired dengan device
 
 ### Mengubah Konfigurasi
 - Hapus data aplikasi untuk reset konfigurasi
@@ -48,6 +57,7 @@ Untuk menambah range IP lain, edit file:
 - WebView untuk menampilkan web app
 - Presentation API untuk dual screen
 - SharedPreferences untuk storage konfigurasi
+- Bluetooth API untuk printing
 
 ## Build
 

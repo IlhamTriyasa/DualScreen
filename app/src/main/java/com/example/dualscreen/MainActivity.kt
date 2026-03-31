@@ -1,22 +1,31 @@
 package com.example.dualscreen
 
+import android.Manifest
 import android.app.Activity
 import android.app.Presentation
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.hardware.display.DisplayManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Display
 import android.view.View
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : Activity() {
 
@@ -32,11 +41,18 @@ class MainActivity : Activity() {
         private const val KEY_HIDE_KEYBOARD = "hide_keyboard"
         private const val DEFAULT_POS_URL = "http://192.168.5.21/esb-fnb-pos/en/login"
         private const val DEFAULT_CUSTOMER_URL = "http://192.168.5.21/esb-fnb-pos/en/customer-display"
+        private const val REQUEST_BLUETOOTH_PERMISSIONS = 1001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // Handle incoming intent (esbprint:// URL scheme)
+        handleIntent(intent)
+
+        // Request Bluetooth permissions
+        requestBluetoothPermissions()
 
         // Inisialisasi SharedPreferences
         prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -44,11 +60,64 @@ class MainActivity : Activity() {
         // Inisialisasi DisplayManager
         displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
 
-        // Cek apakah ini pertama kali运行 atau butuh konfigurasi
+        // Cek apakah ini pertama kali 运行 atau butuh konfigurasi
         if (needsConfiguration()) {
             showSettingsUI()
         } else {
             setupDualScreen()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.let { handleIntent(it) }
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        intent?.data?.let { uri ->
+            if (uri.scheme == "esbprint") {
+                // Handle esbprint:// URL scheme - load in primary WebView
+                val printUrl = uri.toString()
+                Toast.makeText(this, "Print request received: $printUrl", Toast.LENGTH_SHORT).show()
+                
+                // If WebView is already loaded, navigate to the print URL
+                primaryWebView?.let { webView ->
+                    webView.loadUrl(printUrl)
+                } ?: run {
+                    // Store the URL to load after WebView is initialized
+                    prefs.edit().putString("pending_print_url", printUrl).apply()
+                }
+            }
+        }
+    }
+
+    private fun requestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val permissions = arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_ADVERTISE
+            )
+            
+            val permissionsToRequest = permissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }.toTypedArray()
+
+            if (permissionsToRequest.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, permissionsToRequest, REQUEST_BLUETOOTH_PERMISSIONS)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_BLUETOOTH_PERMISSIONS) {
+            // Permissions handled - app will work with or without Bluetooth permissions
+            // WebView will still function for POS and Customer display
         }
     }
 
@@ -169,7 +238,31 @@ class MainActivity : Activity() {
         primaryWebView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            webViewClient = WebViewClient()
+            settings.allowFileAccess = true
+            settings.allowContentAccess = true
+            
+            webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                    url?.let {
+                        // Handle esbprint:// custom URL scheme for printing
+                        if (it.startsWith("esbprint://") || it.startsWith("intent://") || it.startsWith("market://")) {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                                startActivity(intent)
+                                return true
+                            } catch (e: Exception) {
+                                Toast.makeText(this@MainActivity, "Unable to handle: $it", Toast.LENGTH_SHORT).show()
+                                return true
+                            }
+                        }
+                        // Handle other http/https URLs normally
+                    }
+                    return false
+                }
+            }
+            
+            webChromeClient = WebChromeClient()
+            
             loadUrl(getPosUrl())
             setBackgroundColor(Color.WHITE)
             
@@ -180,6 +273,13 @@ class MainActivity : Activity() {
         }
 
         primaryLayout.addView(primaryWebView)
+        
+        // Check for pending print URL
+        val pendingPrintUrl = prefs.getString("pending_print_url", null)
+        if (!pendingPrintUrl.isNullOrEmpty()) {
+            primaryWebView?.loadUrl(pendingPrintUrl)
+            prefs.edit().remove("pending_print_url").apply()
+        }
     }
 
     private fun hideSystemUI() {
@@ -244,7 +344,29 @@ class MainActivity : Activity() {
             secondaryWebView = WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
+                settings.allowFileAccess = true
+                settings.allowContentAccess = true
+                
+                webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                        url?.let {
+                            // Handle esbprint:// custom URL scheme for printing
+                            if (it.startsWith("esbprint://") || it.startsWith("intent://") || it.startsWith("market://")) {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                                    startActivity(intent)
+                                    return true
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Unable to handle: $it", Toast.LENGTH_SHORT).show()
+                                    return true
+                                }
+                            }
+                        }
+                        return false
+                    }
+                }
+                
+                webChromeClient = WebChromeClient()
                 loadUrl(getCustomerUrl())
                 setBackgroundColor(Color.BLACK)
             }
